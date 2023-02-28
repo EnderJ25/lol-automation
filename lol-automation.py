@@ -150,7 +150,7 @@ def main():
             elif stat == "ReadyCheck" and status != stat:
                 request = api.post('/lol-matchmaking/v1/ready-check/accept')
                 if request.status_code == 200 or request.status_code == 204:
-                    statusBar("Partida aceptada!", style="green")
+                    log(Text("Partida aceptada!", style="green"))
                     status=stat
                 else:
                     logErr("Error " + str(request.status_code) + " aceptando partida: " + request.text + "\n")
@@ -224,7 +224,7 @@ def asyncScreen():
                 time.sleep(5)
                 return
 
-            log(str(l["log"]))
+            #log(str(l["log"]))
             #f = open("demofile2.txt", "a", encoding='utf-8')
             #f.write(str(render_map[l["log"]].render))
             #f.close()
