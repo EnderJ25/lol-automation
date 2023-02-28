@@ -1,3 +1,9 @@
+# INI Files
+*.ini
+
+# Icon Files
+*.ico
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

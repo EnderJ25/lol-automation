@@ -61,7 +61,7 @@ def configuration(write=False):
             for i in config["pingTargets"]:
                 pingTargets[i] = eval(config["pingTargets"][i])
         else:
-            pingTargets = {1:["League of Legends", "lan.leagueoflegends.com"]}
+            pingTargets = {1:["Google", "www.google.com"]}
         log(Text("Configuración cargada.", style="green"))
             
 
