@@ -18,6 +18,7 @@ inifile = os.path.dirname(sys.argv[0]) + '\\lol-automation.ini'
 status="init"
 leagueDetected=False
 exitScript=False
+apiTimeout=10
 
 def configuration(write=False):
     global config, pingTargets, pingLapse, pingEnabled, Lapse1, Lapse2, Lapse, logErr_enabled
@@ -86,7 +87,7 @@ def checkLeague():
             if checkProcess("LeagueClient.exe"):
                 log(Text("Cliente de League of Legends detectado.", style="green"))
                 log("Conectando a la API...")
-                api = league_connection.LeagueConnection(lockfile, timeout=5)
+                api = league_connection.LeagueConnection(lockfile, timeout=apiTimeout)
                 while True:
                     try:
                         api.get("/lol-gameflow/v1/gameflow-phase")
