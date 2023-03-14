@@ -145,6 +145,9 @@ def main():
             elif stat == "Lobby" and status != stat:
                 statusBar("En sala.")
                 status=stat
+            elif stat == "CheckedIntoTournament" and status != stat:
+                statusBar("Confirmado en Clash.")
+                status=stat
             elif stat == "Matchmaking" and status != stat:
                 statusBar("Buscando partida...")
                 status=stat
