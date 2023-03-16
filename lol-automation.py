@@ -1,4 +1,4 @@
-import os, sys, time, threading, psutil, colorama, league_connection, configparser
+import os, sys, time, threading, psutil, colorama, json, league_connection, configparser
 from msvcrt import getch, kbhit
 from ping3 import ping as ping3
 from rich.console import Console
@@ -124,6 +124,16 @@ def ping(host):
     else:
         logErr("Error de ping: " + str(type(pingResult)))
         return Text("PingError", style="red")
+
+def getChampSelect():
+    global chatID
+    champSelect = json.loads(api.get("/lol-champ-select/v1/session").text)
+    chatID = champSelect["chatDetails"]["multiUserChatId"]
+
+def sendChat(msg):
+    sAPI = api.post("/lol-chat/v1/conversations/" + chatID + "/messages", json={"body": msg})
+    if not sAPI.status_code == 200:
+        logErr("Error " + str(sAPI.status_code) + " enviando mensaje al chat: " + json.loads(sAPI.text)["message"] + "\n")
         
 def main():
     global Lapse, status, exitScript
@@ -131,8 +141,6 @@ def main():
         try:
             if exitScript: return
             checkLeague()
-            #print("Router: " + ping("192.168.1.1"))
-            #print("League: " + ping("lan.leagueoflegends.com"))
             request = api.get("/lol-gameflow/v1/gameflow-phase")
             if not request.status_code == 200:
                 logErr("Error " + str(request.status_code) + " consultando fase de partida: " + request.text + "\n")
@@ -158,9 +166,13 @@ def main():
                     status=stat
                 else:
                     logErr("Error " + str(request.status_code) + " aceptando partida: " + request.text + "\n")
-            elif stat == "ChampSelect" and status != stat:
-                statusBar("Selección de campeón...")
-                status=stat
+            elif stat == "ChampSelect":
+                getChampSelect()
+                if status != stat:
+                    statusBar("Selección de campeón...")
+                    status=stat
+                    sendChat("TOP")
+                    sendChat("TOP")
             elif stat == "InProgress" and status != stat:
                 statusBar("Partida en progreso...")
                 status=stat
