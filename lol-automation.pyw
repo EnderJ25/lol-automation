@@ -255,8 +255,8 @@ def main():
                 if state != stat:
                     status("Selección de campeón...")
                     state=stat
-                    sendChat("TOP")
-                    sendChat("TOP")
+                    #sendChat("TOP")
+                    #sendChat("TOP")
             elif stat == "InProgress" and state != stat:
                 status("Partida en progreso...")
                 state=stat
