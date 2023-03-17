@@ -1,25 +1,112 @@
-import os, sys, time, threading, psutil, colorama, json, league_connection, configparser
-from msvcrt import getch, kbhit
+import os, sys, time, threading, logging, psutil, json, league_connection, configparser
 from ping3 import ping as ping3
-from rich.console import Console
-from rich import box
-from rich.panel import Panel
-from rich.align import Align
-from rich.text import Text
-from rich.live import Live
-from rich.table import Table
-from rich.layout import Layout
-from rich.style import Style
-from rich.progress import Progress
+import tkinter as tk
+from tkinter import *
+import tkinter.scrolledtext as ScrolledText
 
 lockfile = 'C:\\Riot Games\\League of Legends\\lockfile'
 inifile = os.path.dirname(sys.argv[0]) + '\\lol-automation.ini'
 
-status="init"
 leagueDetected=False
 exitScript=False
 apiTimeout=10
 
+state="none"
+
+status = lambda msg: app.status.config(text = msg)
+
+class TextHandler(logging.Handler):
+    # This class allows you to log to a Tkinter Text or ScrolledText widget
+    def __init__(self, text):
+        # run the regular Handler __init__
+        logging.Handler.__init__(self)
+        self.setLevel(logging.DEBUG)
+        self.text = text
+        self.text.config(state='disabled')
+        self.text.tag_config("INFO", foreground="black")
+        self.text.tag_config("DEBUG", foreground="grey")
+        self.text.tag_config("WARNING", foreground="orange")
+        self.text.tag_config("ERROR", foreground="red")
+        self.text.tag_config("CRITICAL", foreground="red", underline=1)
+
+        #self.red = self.text.tag_configure("red", foreground="red")
+        # Store a reference to the Text it will log to
+        self.text = text
+
+    def emit(self, record):
+        msg = self.format(record)
+        def append():
+            self.text.configure(state='normal')
+            self.text.insert(tk.END, msg + '\n', record.levelname)
+            self.text.configure(state='disabled')
+            # Autoscroll to the bottom
+            self.text.yview(tk.END)
+        # This is necessary because we can't modify the Text from other threads
+        self.text.after(0, append)
+
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+
+        ## Setting up Initial Things
+        self.title("League of Legends Automation")
+        self.geometry("600x200")
+        self.resizable(True, True)
+        #self.iconphoto(False, tk.PhotoImage(file="assets/title_icon.png"))
+
+        self.columnconfigure(0, weight=2)
+        self.rowconfigure(0, weight=1)
+        
+        ## Menu Bar
+        menubar = tk.Menu(self , bd=3, relief=RAISED, activebackground="#80B9DC")
+
+        ## Filemenu
+        filemenu = Menu(menubar, tearoff=0, relief=RAISED, activebackground="#026AA9")
+        menubar.add_cascade(label="Archivo", menu=filemenu)
+        filemenu.add_command(label="Cargar configuración", command=self.quit)
+        filemenu.add_command(label="Guardar configuración", command=self.quit)  
+        filemenu.add_separator()
+        filemenu.add_command(label="Salir", command=self.quit)  
+
+        ## functions menu
+        functions_menu = Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Opciones", menu=functions_menu)
+        pingEnabled = tk.BooleanVar()
+        functions_menu.add_checkbutton(label="Habilitar ping", onvalue=1, offvalue=0, variable=pingEnabled)
+        functions_menu.add_separator()
+        functions_menu.add_command(label="Mensajes automáticos")
+
+        ## help menu
+        help_menu = Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Ayuda", menu=help_menu)
+        help_menu.add_command(label="EnderJ25 en GitHub", command=configuration)
+        help_menu.add_separator()
+        help_menu.add_command(label="Acerca de", command=configuration)
+
+        self.configure(menu=menubar)
+
+        # Add text widget to display logging info
+        st = ScrolledText.ScrolledText(self, state='disabled')
+        st.configure(font='TkFixedFont')
+        st.pack(expand=True)
+        st.grid(column=0, row=0, sticky='nsew')
+
+        # Create textLogger
+        text_handler = TextHandler(st)
+
+        # Logging configuration
+        logging.basicConfig(filename='lol-automation.log',
+            level=logging.INFO, 
+            format='%(asctime)s - %(levelname)s - %(message)s')        
+
+        # Add the handler to logger
+        logger = logging.getLogger()        
+        logger.addHandler(text_handler)
+
+        self.status = tk.Label(self, text="…", bd=1, relief=tk.SUNKEN, anchor=tk.W)
+        self.status.grid(column=0, row=1, sticky='nsew')
+
+        
 def configuration(write=False):
     global config, pingTargets, pingLapse, pingEnabled, Lapse1, Lapse2, Lapse, logErr_enabled
     config = configparser.ConfigParser()
@@ -30,7 +117,7 @@ def configuration(write=False):
         try:
             config['pingTargets'] = pingTargets
         except:
-            logErr("Error de configuración. Restableciendo...")
+            logging.info("Error de configuración. Restableciendo...")
             try:
                 os.remove(inifile)
             except:
@@ -39,13 +126,13 @@ def configuration(write=False):
             return
         with open(inifile, 'w') as configfile:
             config.write(configfile)
-        log(Text("Configuración guardada.", style="green"))
+        logging.info("Configuración guardada.")
     else:
         pingTargets = {}
         try:
             config.read(inifile)
         except:
-            logErr("Error de configuración. Restableciendo...")
+            logging.info("Error de configuración. Restableciendo...")
             try:
                 os.remove(inifile)
             except:
@@ -63,11 +150,8 @@ def configuration(write=False):
                 pingTargets[i] = eval(config["pingTargets"][i])
         else:
             pingTargets = {1:["Google", "www.google.com"]}
-        log(Text("Configuración cargada.", style="green"))
+        logging.info("Configuración cargada.")
             
-
-def logErr (text):
-    if logErr_enabled: log(Text(text, style="red"))
     
 def checkProcess(processName):
     for proc in psutil.process_iter():
@@ -81,26 +165,26 @@ def checkProcess(processName):
 def checkLeague():
     global leagueDetected, api, exitScript
     if not leagueDetected:
-        statusBar("Inicializando...")
-        log("Detectando Cliente de League of Legends... ")
+        status("Inicializando...")
+        logging.info("Detectando Cliente de League of Legends... ")
         while True:
             if checkProcess("LeagueClient.exe"):
-                log(Text("Cliente de League of Legends detectado.", style="green"))
-                log("Conectando a la API...")
+                logging.info("Cliente de League of Legends detectado.")
+                logging.info("Conectando a la API...")
                 api = league_connection.LeagueConnection(lockfile, timeout=apiTimeout)
                 while True:
                     try:
                         api.get("/lol-gameflow/v1/gameflow-phase")
-                        log(Text("Conectado!", style="green"))
+                        logging.info("Conectado!")
                         break
                     except:
                         time.sleep(0.5)
-                statusBar("Inicializado")
+                status("Inicializado")
                 leagueDetected=True
                 return False
             time.sleep(3)
     elif not checkProcess("LeagueClient.exe"):
-        log(Text("Cliente cerrado.", style="red"))
+        logging.info(Text("Cliente cerrado.", style="red"))
         exitScript=True
 
 def ping(host):
@@ -136,7 +220,7 @@ def sendChat(msg):
         logErr("Error " + str(sAPI.status_code) + " enviando mensaje al chat: " + json.loads(sAPI.text)["message"] + "\n")
         
 def main():
-    global Lapse, status, exitScript
+    global Lapse, state, exitScript
     while True:
         try:
             if exitScript: return
@@ -147,104 +231,67 @@ def main():
             else:
                 stat=request.text.replace('"', "")
         
-            if stat == "None" and status != stat:
-                statusBar("Esperando entrar a una sala...")
-                status=stat
-            elif stat == "Lobby" and status != stat:
-                statusBar("En sala.")
-                status=stat
-            elif stat == "CheckedIntoTournament" and status != stat:
-                statusBar("Confirmado en Clash.")
-                status=stat
-            elif stat == "Matchmaking" and status != stat:
-                statusBar("Buscando partida...")
-                status=stat
-            elif stat == "ReadyCheck" and status != stat:
+            if stat == "None" and state != stat:
+                status("Esperando entrar a una sala...")
+                state=stat
+            elif stat == "Lobby" and state != stat:
+                status("En sala.")
+                state=stat
+            elif stat == "CheckedIntoTournament" and state != stat:
+                status("Confirmado en Clash.")
+                state=stat
+            elif stat == "Matchmaking" and state != stat:
+                status("Buscando partida...")
+                state=stat
+            elif stat == "ReadyCheck" and state != stat:
                 request = api.post('/lol-matchmaking/v1/ready-check/accept')
                 if request.status_code == 200 or request.status_code == 204:
-                    log(Text("Partida aceptada!", style="green"))
-                    status=stat
+                    logging.info("Partida aceptada!")
+                    state=stat
                 else:
-                    logErr("Error " + str(request.status_code) + " aceptando partida: " + request.text + "\n")
+                    logging.info("Error " + str(request.status_code) + " aceptando partida: " + request.text + "\n")
             elif stat == "ChampSelect":
                 getChampSelect()
-                if status != stat:
-                    statusBar("Selección de campeón...")
-                    status=stat
+                if state != stat:
+                    status("Selección de campeón...")
+                    state=stat
                     sendChat("TOP")
                     sendChat("TOP")
-            elif stat == "InProgress" and status != stat:
-                statusBar("Partida en progreso...")
-                status=stat
-            elif stat == "Reconnect" and status != stat:
-                statusBar("Desconectado de la partida.")
-                status=stat
-            elif stat == "WaitingForStats" and status != stat:
-                statusBar("Esperando estadísticas...")
-                status=stat
-            elif stat == "PreEndOfGame" and status != stat:
-                statusBar("Finalizando partida...")
-                status=stat
-            elif stat == "EndOfGame" and status != stat:
-                statusBar("Partida finalizada.")
-                status=stat
+            elif stat == "InProgress" and state != stat:
+                status("Partida en progreso...")
+                state=stat
+            elif stat == "Reconnect" and state != stat:
+                status("Desconectado de la partida.")
+                state=stat
+            elif stat == "WaitingForStats" and state != stat:
+                status("Esperando estadísticas...")
+                state=stat
+            elif stat == "PreEndOfGame" and state != stat:
+                status("Finalizando partida...")
+                state=stat
+            elif stat == "EndOfGame" and state != stat:
+                status("Partida finalizada.")
+                state=stat
             elif status != stat:
-                log(stat)
+                pass
             
         except ConnectionError as err:
-            logErr("Error conectando a la API: " + str(err) + "\n")
-            status="error"
+            logging.info("Error conectando a la API: " + str(err) + "\n")
+            state="error"
         except ConnectionRefusedError as err:
-            logErr("Error conectando a la API. Conexión rechazada: " + str(err) + "\n")
-            status="error"
+            logging.info("Error conectando a la API. Conexión rechazada: " + str(err) + "\n")
+            state="error"
         except AttributeError as err:
-            logErr("Error de atributos: " + str(err) + "\n")
-            status="error"
+            logging.info("Error de atributos: " + str(err) + "\n")
+            state="error"
         except league_connection.exceptions.ConnectionTimeoutError as err:
-            logErr("Tiempo de espera de conexión agotado: " + str(err) + "\n")
-            status="error"
+            logging.info("Tiempo de espera de conexión agotado: " + str(err) + "\n")
+            state="error"
         except Exception as err:
-            logErr("Error desconocido: " + str(type(err)) + " - " + str(err) + "\n")
-            status="error"
+            logging.info("Error desconocido: " + str(type(err)) + " - " + str(err) + "\n")
+            state="error"
             
         time.sleep(Lapse)
-
-def asyncInput():
-    global exitScript, pingEnabled
-    while True:
-        if exitScript: return
-        if kbhit():
-            ch=str(getch()).replace("'","")[1:]
-            #log("Tecla " + ch + " presionada.")
-            if ch.lower() == ("q"):
-                exitScript=True
-            elif ch.lower() == ("p"):
-                if pingEnabled:
-                    log(Text("Ping deshabilitado.", style="red"))
-                    pingEnabled=False
-                else:
-                    log(Text("Ping habilitado.", style="green"))
-                    pingEnabled=True
-            if ch.lower() == ("s"):
-                configuration(True)
-            if ch.lower() == ("a"):
-                configuration()
-        time.sleep(0.1)
-
-def asyncScreen():
-    with Live(l, refresh_per_second=10, screen=True, vertical_overflow='visible') as live:
-        while True:
-            if exitScript:
-                log("Saliendo...")
-                statusBar("Saliendo...")
-                time.sleep(5)
-                return
-
-            #log(str(l["log"]))
-            #f = open("demofile2.txt", "a", encoding='utf-8')
-            #f.write(str(render_map[l["log"]].render))
-            #f.close()
-            time.sleep(2)
 
 def asyncPing():
     while True:
@@ -257,65 +304,15 @@ def asyncPing():
                 pingTable.add_row(Text(pingTargets[target][0], style="bright_white"), ping(pingTargets[target][1]))
             l["main"]["side"]["ping"].update(Panel(pingTable, title="Ping", style="blue"))
         time.sleep(pingLapse)
-
-def initScreen():
-    global c, l, logTable, pingTable, infoTable
-    colorama.init()
-    c = Console(log_path=False)
-    l = Layout()
-    os.system("title " + "League of Legends AutoAccept")
-    l.split(
-    Layout(name="header", size=3),
-    Layout(ratio=1, name="main"),
-    Layout(size=3, name="status"),
-    )
-    l["main"].split_row(
-        Layout(name="log", ratio=2),
-        Layout(name="side")
-    )
-    l["side"].split(
-        Layout(name="info"),
-        Layout(name="ping")
-    )
-    l["header"].update(Panel(Align.center("League of Legends Automation"), box=box.ROUNDED, style="green"))
-    infoTable = Table.grid(expand=True)
-    infoTable.add_column(justify="left", no_wrap=True)
-    infoTable.add_column(justify="right", no_wrap=True)
-    makeInfo()
-    l["main"]["side"]["info"].update(Panel(infoTable, title="Info", style="blue"))
-    pingTable = Table.grid(expand=True)
-    pingTable.add_column(justify="left", no_wrap=True)
-    pingTable.add_column(justify="right", no_wrap=True)
-    l["main"]["side"]["ping"].update(Panel(pingTable, title="Ping", style="blue"))
-    logTable = Table.grid(expand=True)
-    logTable.add_column() #no_wrap=True)
-    c.print(l)
-
-def makeInfo():
-    global infoTable
-    infoTable.add_row("Tecla Q", Text("Salir.", style="red"))
-    infoTable.add_row("Tecla P", Text("Alternar ping.", style="green"))
-    infoTable.add_row("Tecla S", Text("Guardar configuración.", style="green"))
-    infoTable.add_row("Tecla A", Text("Cargar configuración.", style="green"))
-
-def log(data):
-    global logTable
-    logTable.add_row(data)
-    l["main"]["log"].update(Panel(logTable, title="Registro", style="white"))
-
-def statusBar(data):
-    l["status"].update(Panel(data, style="bright_white"))
     
 if __name__ == '__main__':
-    initScreen()
-
-    log("Archivo de configuración: " + inifile)
+    app = App()
+    #app.attributes('-topmost', True)
+    logging.info("Archivo de configuración: " + inifile)
     configuration()
-    
     p1 = threading.Thread(target=main)
-    p2 = threading.Thread(target=asyncScreen)
-    p3 = threading.Thread(target=asyncInput)
-    p4 = threading.Thread(target=asyncPing)
-    p1.start();p2.start();p3.start();p4.start()
-    p1.join();p2.join();p3.join();p4.join()
-    colorama.deinit()
+    p2 = threading.Thread(target=asyncPing)
+    p1.start() #;p2.start()
+    
+    status("Inicializando...")
+    app.mainloop()

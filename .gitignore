@@ -1,8 +1,10 @@
-# INI Files
-*.ini
-
 # Icon Files
 *.ico
+
+# Text Files
+*.ini
+*.txt
+*.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
