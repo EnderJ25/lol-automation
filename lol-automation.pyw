@@ -1,4 +1,4 @@
-import os, sys, time, threading, logging, psutil, json, league_connection, configparser
+import os, sys, time, threading, logging, webbrowser, psutil, json, league_connection, configparser
 from ping3 import ping as ping3
 import tkinter as tk
 from tkinter import *
@@ -14,6 +14,11 @@ apiTimeout=10
 state="none"
 
 status = lambda msg: app.status.config(text = msg)
+
+def closeApp():
+    global exitScript
+    exitScript=True
+    app.destroy()
 
 class TextHandler(logging.Handler):
     # This class allows you to log to a Tkinter Text or ScrolledText widget
@@ -53,6 +58,8 @@ class App(tk.Tk):
         self.geometry("600x200")
         self.resizable(True, True)
         #self.iconphoto(False, tk.PhotoImage(file="assets/title_icon.png"))
+        self.protocol("WM_DELETE_WINDOW", closeApp) ## Handle Close event from WM
+        #self.attributes('-topmost', True)
 
         self.columnconfigure(0, weight=2)
         self.rowconfigure(0, weight=1)
@@ -63,23 +70,30 @@ class App(tk.Tk):
         ## Filemenu
         filemenu = Menu(menubar, tearoff=0, relief=RAISED, activebackground="#026AA9")
         menubar.add_cascade(label="Archivo", menu=filemenu)
-        filemenu.add_command(label="Cargar configuración", command=self.quit)
-        filemenu.add_command(label="Guardar configuración", command=self.quit)  
+        filemenu.add_command(label="Cargar configuración", command=configuration)
+        filemenu.add_command(label="Guardar configuración", command=lambda: configuration(True))  
         filemenu.add_separator()
-        filemenu.add_command(label="Salir", command=self.quit)  
+        filemenu.add_command(label="Salir", command=closeApp)  
 
         ## functions menu
         functions_menu = Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Opciones", menu=functions_menu)
-        pingEnabled = tk.BooleanVar()
-        functions_menu.add_checkbutton(label="Habilitar ping", onvalue=1, offvalue=0, variable=pingEnabled)
-        functions_menu.add_separator()
         functions_menu.add_command(label="Mensajes automáticos")
-
+        functions_menu.add_separator()
+        self.pingEnabled = tk.BooleanVar()
+        functions_menu.add_checkbutton(label="Habilitar ping", onvalue=1, offvalue=0, variable=self.pingEnabled)
+        functions_menu.add_separator()
+        self.enableTray = tk.BooleanVar()
+        self.minTray = tk.BooleanVar()
+        self.closeTray = tk.BooleanVar()
+        functions_menu.add_checkbutton(label="Habilitar icono en la bandeja", onvalue=1, offvalue=0, variable=self.enableTray)
+        functions_menu.add_checkbutton(label="Minimizar la bandeja", onvalue=1, offvalue=0, variable=self.minTray)
+        functions_menu.add_checkbutton(label="Cerrar a la bandeja", onvalue=1, offvalue=0, variable=self.closeTray)
+        
         ## help menu
         help_menu = Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Ayuda", menu=help_menu)
-        help_menu.add_command(label="EnderJ25 en GitHub", command=configuration)
+        help_menu.add_command(label="EnderJ25 en GitHub", command=lambda: webbrowser.open("https://github.com/EnderJ25"))
         help_menu.add_separator()
         help_menu.add_command(label="Acerca de", command=configuration)
 
@@ -112,7 +126,7 @@ def configuration(write=False):
     config = configparser.ConfigParser()
     if write:
         config["general"] = {"logErrors": logErr_enabled}
-        config["ping"] = {"pingEnabled": pingEnabled, "pingLapse": pingLapse}
+        config["ping"] = {"pingEnabled": app.pingEnabled.get(), "pingLapse": pingLapse}
         config["timer"] = {"Lapse1": Lapse1, "Lapse2": Lapse2}
         try:
             config['pingTargets'] = pingTargets
@@ -141,7 +155,7 @@ def configuration(write=False):
             return
         logErr_enabled = config.getboolean("general", "logErrors", fallback=True)
         pingLapse = config.getfloat("ping", "pingLapse", fallback=1)
-        pingEnabled = config.getboolean("ping", "pingEnabled", fallback=False)
+        app.pingEnabled.set(config.getboolean("ping", "pingEnabled", fallback=False))
         Lapse1 = config.getfloat("timer", "Lapse1", fallback=1)
         Lapse = Lapse1
         Lapse2 = config.getfloat("timer", "Lapse2", fallback=0.5)
@@ -184,8 +198,8 @@ def checkLeague():
                 return False
             time.sleep(3)
     elif not checkProcess("LeagueClient.exe"):
-        logging.info(Text("Cliente cerrado.", style="red"))
-        exitScript=True
+        logging.info("Cliente cerrado.")
+        closeApp()
 
 def ping(host):
     try:
@@ -223,8 +237,8 @@ def main():
     global Lapse, state, exitScript
     while True:
         try:
-            if exitScript: return
             checkLeague()
+            if exitScript: return
             request = api.get("/lol-gameflow/v1/gameflow-phase")
             if not request.status_code == 200:
                 logErr("Error " + str(request.status_code) + " consultando fase de partida: " + request.text + "\n")
@@ -307,12 +321,11 @@ def asyncPing():
     
 if __name__ == '__main__':
     app = App()
-    #app.attributes('-topmost', True)
     logging.info("Archivo de configuración: " + inifile)
     configuration()
     p1 = threading.Thread(target=main)
     p2 = threading.Thread(target=asyncPing)
     p1.start() #;p2.start()
-    
     status("Inicializando...")
     app.mainloop()
+    #p1.join() #;p2.join()
