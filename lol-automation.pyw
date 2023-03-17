@@ -1,4 +1,4 @@
-import os, sys, time, threading, logging, webbrowser, psutil, json, league_connection, configparser
+import os, sys, time, threading, pystray, PIL, logging, webbrowser, psutil, json, league_connection, configparser
 from ping3 import ping as ping3
 import tkinter as tk
 from tkinter import *
@@ -19,6 +19,17 @@ def closeApp():
     global exitScript
     exitScript=True
     app.destroy()
+
+def toTray():
+   app.withdraw()
+   image=PIL.Image.open("lol-automation.ico")
+   menu=(item('Salir', closeApp), item('Mostrar', show_window))
+   icon=pystray.Icon("name", image, "LOL Automation", menu)
+   icon.run()
+
+def unTray(icon, item):
+   icon.stop()
+   app.after(0,app.deiconify())
 
 class TextHandler(logging.Handler):
     # This class allows you to log to a Tkinter Text or ScrolledText widget
@@ -57,7 +68,7 @@ class App(tk.Tk):
         self.title("League of Legends Automation")
         self.geometry("600x200")
         self.resizable(True, True)
-        #self.iconphoto(False, tk.PhotoImage(file="assets/title_icon.png"))
+        self.iconphoto(False, tk.PhotoImage(file="lol-automation.png"))
         self.protocol("WM_DELETE_WINDOW", closeApp) ## Handle Close event from WM
         #self.attributes('-topmost', True)
 
@@ -71,7 +82,9 @@ class App(tk.Tk):
         filemenu = Menu(menubar, tearoff=0, relief=RAISED, activebackground="#026AA9")
         menubar.add_cascade(label="Archivo", menu=filemenu)
         filemenu.add_command(label="Cargar configuración", command=configuration)
-        filemenu.add_command(label="Guardar configuración", command=lambda: configuration(True))  
+        filemenu.add_command(label="Guardar configuración", command=lambda: configuration(True))
+        filemenu.add_separator()
+        filemenu.add_command(label="Minimizar a la bandeja", command=tray)  
         filemenu.add_separator()
         filemenu.add_command(label="Salir", command=closeApp)  
 
