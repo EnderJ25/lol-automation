@@ -1,5 +1,6 @@
-import os, sys, time, threading, pystray, PIL, logging, webbrowser, psutil, json, league_connection, configparser
+import os, sys, time, threading, PIL, pystray, logging, webbrowser, psutil, json, league_connection, configparser
 from ping3 import ping as ping3
+from PIL import Image, ImageTk
 import tkinter as tk
 from tkinter import *
 import tkinter.scrolledtext as ScrolledText
@@ -23,16 +24,16 @@ def closeApp():
 def toTray():
    app.withdraw()
    image=PIL.Image.open("lol-automation.ico")
-   menu=(item('Salir', closeApp), item('Mostrar', show_window))
-   icon=pystray.Icon("name", image, "LOL Automation", menu)
+   menu=(pystray.MenuItem('Mostrar', unTray, default=True), pystray.MenuItem('Salir', closeApp))
+   icon=pystray.Icon(name="lol-automation", icon=image, title="LOL Automation", menu=menu)
    icon.run()
 
 def unTray(icon, item):
    icon.stop()
-   app.after(0,app.deiconify())
+   app.deiconify()
 
 class TextHandler(logging.Handler):
-    # This class allows you to log to a Tkinter Text or ScrolledText widget
+    # This class allows you to log to a ScrolledText widget
     def __init__(self, text):
         # run the regular Handler __init__
         logging.Handler.__init__(self)
@@ -84,7 +85,7 @@ class App(tk.Tk):
         filemenu.add_command(label="Cargar configuración", command=configuration)
         filemenu.add_command(label="Guardar configuración", command=lambda: configuration(True))
         filemenu.add_separator()
-        filemenu.add_command(label="Minimizar a la bandeja", command=tray)  
+        filemenu.add_command(label="Minimizar a la bandeja", command=toTray)  
         filemenu.add_separator()
         filemenu.add_command(label="Salir", command=closeApp)  
 
