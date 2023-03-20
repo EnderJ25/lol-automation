@@ -1,4 +1,7 @@
-import os, sys, time, threading, PIL, pystray, logging, webbrowser, psutil, json, league_connection, configparser
+import os, sys, time, threading, PIL, pystray, logging, webbrowser, configparser
+import json
+from localfunctions import *
+from lcu_api import *
 from ping3 import ping as ping3
 from PIL import Image, ImageTk
 import tkinter as tk
@@ -24,9 +27,9 @@ def closeApp():
 def toTray():
    app.withdraw()
    image=PIL.Image.open("lol-automation.ico")
-   menu=(pystray.MenuItem('Mostrar', unTray, default=True), pystray.MenuItem('Salir', closeApp))
+   menu=(pystray.MenuItem('Mostrar', unTray, default=True), pystray.MenuItem('Salir', closeApp))#, pystray.MenuItem('XD', lambda icon, item: icon.notify('Hello World!')))
    icon=pystray.Icon(name="lol-automation", icon=image, title="LOL Automation", menu=menu)
-   icon.run()
+   icon.run_detached()
 
 def unTray(icon, item):
    icon.stop()
@@ -69,6 +72,7 @@ class App(tk.Tk):
         self.title("League of Legends Automation")
         self.geometry("600x200")
         self.resizable(True, True)
+        #self.overrideredirect(True)
         self.iconphoto(False, tk.PhotoImage(file="lol-automation.png"))
         self.protocol("WM_DELETE_WINDOW", closeApp) ## Handle Close event from WM
         #self.attributes('-topmost', True)
@@ -109,7 +113,7 @@ class App(tk.Tk):
         menubar.add_cascade(label="Ayuda", menu=help_menu)
         help_menu.add_command(label="EnderJ25 en GitHub", command=lambda: webbrowser.open("https://github.com/EnderJ25"))
         help_menu.add_separator()
-        help_menu.add_command(label="Acerca de", command=configuration)
+        help_menu.add_command(label="Acerca de", command=lambda: webbrowser.open("https://github.com/EnderJ25/lol-automation\#readme"))
 
         self.configure(menu=menubar)
 
@@ -134,61 +138,77 @@ class App(tk.Tk):
         self.status = tk.Label(self, text="…", bd=1, relief=tk.SUNKEN, anchor=tk.W)
         self.status.grid(column=0, row=1, sticky='nsew')
 
-        
+#####==============================================================#####
+##### Configuration function. Using "inifile" as ini path variable #####
+#####==============================================================#####
 def configuration(write=False):
+    ## Declare global variables
     global config, pingTargets, pingLapse, pingEnabled, Lapse1, Lapse2, Lapse, logErr_enabled
+    ## Declare config parser module class variable
     config = configparser.ConfigParser()
     if write:
+    ## Write mode. get actual values and write to ini file
+        ### Config sections ###
+        ## General
         config["general"] = {"logErrors": logErr_enabled}
+        ## System tray
+        config["tray"] = {"enableTray": app.enableTray.get(), "minTray": app.minTray.get(), "closeTray": app.closeTray.get()}
+        ## Timers
+        config["timers"] = {"Lapse1": Lapse1, "Lapse2": Lapse2}
+        ## Ping 
         config["ping"] = {"pingEnabled": app.pingEnabled.get(), "pingLapse": pingLapse}
-        config["timer"] = {"Lapse1": Lapse1, "Lapse2": Lapse2}
         try:
             config['pingTargets'] = pingTargets
         except:
-            logging.info("Error de configuración. Restableciendo...")
+            logging.error("Error de configuración. Restableciendo...")
             try:
                 os.remove(inifile)
             except:
                 pass
             configuration()
             return
+        #### Write to ini file ####
         with open(inifile, 'w') as configfile:
             config.write(configfile)
+        ## Successfully config write
         logging.info("Configuración guardada.")
     else:
-        pingTargets = {}
+    ## Read mode. get values from ini file and return fallback values if not found
+        #### Read from ini file ####
         try:
             config.read(inifile)
         except:
-            logging.info("Error de configuración. Restableciendo...")
+            logging.error("Error de configuración. Restableciendo...")
             try:
                 os.remove(inifile)
             except:
                 pass
             configuration(True)
             return
+        ### Config sections ###
+        ## General
         logErr_enabled = config.getboolean("general", "logErrors", fallback=True)
+        ## System tray
+        app.enableTray.set(config.getboolean("tray", "enableTray", fallback=True))
+        app.minTray.set(config.getboolean("tray", "minTray", fallback=True))
+        app.closeTray.set(config.getboolean("tray", "closeTray", fallback=True))
+        ## Timers
+        Lapse1 = config.getfloat("timers", "Lapse1", fallback=1)
+        Lapse2 = config.getfloat("timers", "Lapse2", fallback=0.5)
+        Lapse = Lapse1
+        ## Ping
         pingLapse = config.getfloat("ping", "pingLapse", fallback=1)
         app.pingEnabled.set(config.getboolean("ping", "pingEnabled", fallback=False))
-        Lapse1 = config.getfloat("timer", "Lapse1", fallback=1)
-        Lapse = Lapse1
-        Lapse2 = config.getfloat("timer", "Lapse2", fallback=0.5)
+        ## pingTargets
+        # Reset ping targets dictionary and fill from ini file
+        pingTargets = {}
         if config.has_section("pingTargets"):
             for i in config["pingTargets"]:
                 pingTargets[i] = eval(config["pingTargets"][i])
         else:
             pingTargets = {1:["Google", "www.google.com"]}
+        ## Successfully config read
         logging.info("Configuración cargada.")
-            
-    
-def checkProcess(processName):
-    for proc in psutil.process_iter():
-        try:
-            if processName.lower() in proc.name().lower():
-                return True
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            pass
-    return False;
 
 def checkLeague():
     global leagueDetected, api, exitScript
@@ -199,10 +219,10 @@ def checkLeague():
             if checkProcess("LeagueClient.exe"):
                 logging.info("Cliente de League of Legends detectado.")
                 logging.info("Conectando a la API...")
-                api = league_connection.LeagueConnection(lockfile, timeout=apiTimeout)
+                init_lcu(lockfile, apiTimeout)
                 while True:
                     try:
-                        api.get("/lol-gameflow/v1/gameflow-phase")
+                        gameFlow()
                         logging.info("Conectado!")
                         break
                     except:
@@ -215,49 +235,13 @@ def checkLeague():
         logging.info("Cliente cerrado.")
         closeApp()
 
-def ping(host):
-    try:
-        pingResult = ping3(host, unit='ms', timeout=1)
-    except OSError:
-        return Text("SysError", style="red")
-    if type(pingResult) == float:
-        pingColor = "red"
-        if int(pingResult) <= 20:
-            pingColor = "white"
-        elif int(pingResult) <= 200:
-            pingColor = "green"
-        elif int(pingResult) <= 500:
-            pingColor = "yellow"
-        return Text(str(int(pingResult)) + "ms", style=pingColor)
-    elif type(pingResult) == bool and not pingResult:
-        return Text("unreach", style="red")
-    elif pingResult == None:
-        return Text("timeout", style="red")
-    else:
-        logErr("Error de ping: " + str(type(pingResult)))
-        return Text("PingError", style="red")
-
-def getChampSelect():
-    global chatID
-    champSelect = json.loads(api.get("/lol-champ-select/v1/session").text)
-    chatID = champSelect["chatDetails"]["multiUserChatId"]
-
-def sendChat(msg):
-    sAPI = api.post("/lol-chat/v1/conversations/" + chatID + "/messages", json={"body": msg})
-    if not sAPI.status_code == 200:
-        logErr("Error " + str(sAPI.status_code) + " enviando mensaje al chat: " + json.loads(sAPI.text)["message"] + "\n")
-        
 def main():
     global Lapse, state, exitScript
     while True:
         try:
             checkLeague()
             if exitScript: return
-            request = api.get("/lol-gameflow/v1/gameflow-phase")
-            if not request.status_code == 200:
-                logErr("Error " + str(request.status_code) + " consultando fase de partida: " + request.text + "\n")
-            else:
-                stat=request.text.replace('"', "")
+            stat = gameFlow()
         
             if stat == "None" and state != stat:
                 status("Esperando entrar a una sala...")
@@ -273,18 +257,15 @@ def main():
                 state=stat
             elif stat == "ReadyCheck" and state != stat:
                 request = api.post('/lol-matchmaking/v1/ready-check/accept')
-                if request.status_code == 200 or request.status_code == 204:
+                if acceptMatch():
                     logging.info("Partida aceptada!")
                     state=stat
-                else:
-                    logging.info("Error " + str(request.status_code) + " aceptando partida: " + request.text + "\n")
             elif stat == "ChampSelect":
                 getChampSelect()
                 if state != stat:
                     status("Selección de campeón...")
                     state=stat
-                    #sendChat("TOP")
-                    #sendChat("TOP")
+                    sendChat("XD")
             elif stat == "InProgress" and state != stat:
                 status("Partida en progreso...")
                 state=stat
@@ -304,19 +285,19 @@ def main():
                 pass
             
         except ConnectionError as err:
-            logging.info("Error conectando a la API: " + str(err) + "\n")
+            logging.error("Error conectando a la API: " + str(err) + "\n")
             state="error"
         except ConnectionRefusedError as err:
-            logging.info("Error conectando a la API. Conexión rechazada: " + str(err) + "\n")
+            logging.error("Error conectando a la API. Conexión rechazada: " + str(err) + "\n")
             state="error"
         except AttributeError as err:
-            logging.info("Error de atributos: " + str(err) + "\n")
+            logging.error("Error de atributos: " + str(err) + "\n")
             state="error"
-        except league_connection.exceptions.ConnectionTimeoutError as err:
-            logging.info("Tiempo de espera de conexión agotado: " + str(err) + "\n")
+        except ConnectionTimeoutError as err:
+            logging.error("Tiempo de espera de conexión agotado: " + str(err) + "\n")
             state="error"
         except Exception as err:
-            logging.info("Error desconocido: " + str(type(err)) + " - " + str(err) + "\n")
+            logging.error("Error desconocido: " + str(type(err)) + " - " + str(err) + "\n")
             state="error"
             
         time.sleep(Lapse)
