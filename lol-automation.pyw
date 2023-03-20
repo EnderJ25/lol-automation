@@ -211,7 +211,7 @@ def configuration(write=False):
         logging.info("Configuración cargada.")
 
 def checkLeague():
-    global leagueDetected, api, exitScript
+    global leagueDetected, exitScript
     if not leagueDetected:
         status("Inicializando...")
         logging.info("Detectando Cliente de League of Legends... ")
@@ -256,7 +256,6 @@ def main():
                 status("Buscando partida...")
                 state=stat
             elif stat == "ReadyCheck" and state != stat:
-                request = api.post('/lol-matchmaking/v1/ready-check/accept')
                 if acceptMatch():
                     logging.info("Partida aceptada!")
                     state=stat

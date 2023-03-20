@@ -101,7 +101,7 @@ def getChampSelect():
     __chatID__ = champSelect["chatDetails"]["multiUserChatId"]
 
 def sendChat(msg):
-    result = __lcu_api__.post("/lol-chat/v1/conversations/" + chatID + "/messages", json={"body": msg})
+    result = __lcu_api__.post("/lol-chat/v1/conversations/" + __chatID__ + "/messages", json={"body": msg})
     if not result.status_code == 200:
         loggging.error("Error " + str(result.status_code) + " enviando mensaje al chat: " + json.loads(result.text)["message"])
     else:
