@@ -11,7 +11,7 @@ def checkProcess(processName):
 
 def ping(host):
     try:
-        pingResult = ping3(host, unit='ms', timeout=1)
+        pingResult = ping3.ping(host, unit='ms', timeout=1)
     except OSError:
         return "SysError"
     if type(pingResult) == float:

@@ -1,5 +1,4 @@
-import os, sys, time, threading, PIL, pystray, logging, webbrowser, configparser, base64
-import json
+import os, sys, time, threading, PIL, pystray, logging, webbrowser, configparser
 from localfunctions import *
 from lcu_api import *
 from ping3 import ping as ping3
@@ -52,6 +51,27 @@ class TextHandler(logging.Handler):
             self.text.yview(tk.END)
         # This is necessary because we can't modify the Text from other threads
         self.text.after(0, append)
+        
+class pingWidget(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+
+        self.title('Ping')
+        self.resizable(False, False)
+        self.protocol("WM_DELETE_WINDOW", lambda: app.togglePing(True))
+        #self.overrideredirect(True)
+        #self.attributes('-topmost', True)
+        self.attributes('-toolwindow', True)
+        self.columnconfigure(0, weight=2)
+        self.rowconfigure(0, weight=1)
+        self.row_count=0
+        self.entries=[]
+
+    def add(self, name):
+        tk.Label(self, text=name, anchor=tk.W).grid(column=0, row=self.row_count, sticky='nsew', ipadx=10)
+        self.entries.append(tk.Label(self, text="...", anchor=tk.E))
+        self.entries[len(self.entries)-1].grid(column=1, row=self.row_count, sticky='e')
+        self.row_count+=1
 
 class App(tk.Tk):
     def __init__(self):
@@ -64,14 +84,12 @@ class App(tk.Tk):
         self.geometry("600x200")
         self.resizable(True, True)
         self.iconphoto(False, tk.PhotoImage(file= app_path + "\\assets\\icon.png"))
-        #self.overrideredirect(True)
-        #self.attributes('-topmost', True)
+        self.columnconfigure(0, weight=2)
+        self.rowconfigure(0, weight=1)
 
         ### Variables
         self.icon_running = False
-
-        self.columnconfigure(0, weight=2)
-        self.rowconfigure(0, weight=1)
+        self.ping = None
         
         ## Menu Bar
         menubar = tk.Menu(self , bd=3, relief=RAISED, activebackground="#80B9DC")
@@ -92,7 +110,7 @@ class App(tk.Tk):
         functions_menu.add_command(label="Mensajes automáticos")
         functions_menu.add_separator()
         self.pingEnabled = tk.BooleanVar()
-        functions_menu.add_checkbutton(label="Habilitar ping", onvalue=1, offvalue=0, variable=self.pingEnabled)
+        functions_menu.add_checkbutton(label="Habilitar ping", onvalue=1, offvalue=0, variable=self.pingEnabled, command=self.togglePing)
         functions_menu.add_separator()
         self.enableTray = tk.BooleanVar()
         self.minTray = tk.BooleanVar()
@@ -133,7 +151,7 @@ class App(tk.Tk):
 
         # Create system tray icon
         image=PIL.Image.open(app_path + "\\assets\\icon.ico")
-        menu=(pystray.MenuItem('Mostrar', self.unTray, default=True), pystray.MenuItem('Salir', closeApp))#, pystray.MenuItem('XD', lambda icon, item: icon.notify('Hello World!')))
+        menu=(pystray.MenuItem('Mostrar', self.unTray, default=True), pystray.MenuItem('Salir', closeApp))
         self.icon=pystray.Icon(name="lol-automation", icon=image, title="LOL Automation", menu=menu)
         self.icon.run_detached()
 
@@ -143,6 +161,16 @@ class App(tk.Tk):
     def exit(self):
         if self.icon._running: self.icon.stop()
         self.destroy()
+
+    ## Ping
+    def togglePing(self, invert=False):
+        if invert: self.pingEnabled.set(not self.pingEnabled.get())
+        if self.pingEnabled.get():
+            self.ping = pingWidget(self)
+            for target in pingTargets:
+                self.ping.add(pingTargets[target][0])
+        else:
+            if app.ping.winfo_exists(): self.ping.destroy()
 
     ## Tray icon
     def toggleTray(self):
@@ -170,6 +198,9 @@ class App(tk.Tk):
             self.protocol("WM_DELETE_WINDOW", self.toTray)
         else:
             self.protocol("WM_DELETE_WINDOW", closeApp)
+
+    def notify(self, msg):
+        if not self.focus_displayof() and self.icon.visible and self.icon._running: self.icon.notify(msg)
 
 #####==============================================================#####
 ##### Configuration function. Using "inifile" as ini path variable #####
@@ -230,9 +261,6 @@ def configuration(write=False):
         Lapse1 = config.getfloat("timers", "Lapse1", fallback=1)
         Lapse2 = config.getfloat("timers", "Lapse2", fallback=0.5)
         Lapse = Lapse1
-        ## Ping
-        pingLapse = config.getfloat("ping", "pingLapse", fallback=1)
-        app.pingEnabled.set(config.getboolean("ping", "pingEnabled", fallback=False))
         ## pingTargets
         # Reset ping targets dictionary and fill from ini file
         pingTargets = {}
@@ -241,6 +269,10 @@ def configuration(write=False):
                 pingTargets[i] = eval(config["pingTargets"][i])
         else:
             pingTargets = {1:["Google", "www.google.com"]}
+        ## Ping
+        pingLapse = config.getfloat("ping", "pingLapse", fallback=1)
+        app.pingEnabled.set(config.getboolean("ping", "pingEnabled", fallback=False))
+        app.togglePing()
         ## Successfully config read
         logging.info("Configuración cargada.")
 
@@ -250,6 +282,7 @@ def checkLeague():
         status("Inicializando...")
         logging.info("Detectando Cliente de League of Legends... ")
         while True:
+            if exitScript: return
             if checkProcess("LeagueClient.exe"):
                 logging.info("Cliente de League of Legends detectado.")
                 logging.info("Conectando a la API...")
@@ -291,7 +324,7 @@ def main():
                 state=stat
             elif stat == "ReadyCheck" and state != stat:
                 if acceptMatch():
-                    logging.info("Partida aceptada!")
+                    logging.info("Partida aceptada!"); app.notify("Partida aceptada!")
                     state=stat
             elif stat == "ChampSelect":
                 getChampSelect()
@@ -329,22 +362,21 @@ def main():
         except ConnectionTimeoutError as err:
             logging.error("Tiempo de espera de conexión agotado: " + str(err) + "\n")
             state="error"
-        except Exception as err:
-            logging.error("Error desconocido: " + str(type(err)) + " - " + str(err) + "\n")
-            state="error"
+        #except Exception as err:
+            #logging.error("Error desconocido: " + str(type(err)) + " - " + str(err) + "\n")
+            #state="error"
             
         time.sleep(Lapse)
 
 def asyncPing():
     while True:
         if exitScript: return
-        if pingEnabled:
-            pingTable = Table.grid(expand=True)
-            pingTable.add_column(justify="left", no_wrap=True)
-            pingTable.add_column(justify="right", no_wrap=True)
-            for target in pingTargets:
-                pingTable.add_row(Text(pingTargets[target][0], style="bright_white"), ping(pingTargets[target][1]))
-            l["main"]["side"]["ping"].update(Panel(pingTable, title="Ping", style="blue"))
+        if app.pingEnabled.get() and app.ping.winfo_exists():
+            try:
+                for target in pingTargets:
+                    app.ping.entries[int(target)-1].config(text=ping(pingTargets[target][1]))
+            except Exception:
+                pass
         time.sleep(pingLapse)
     
 if __name__ == '__main__':
@@ -357,13 +389,15 @@ if __name__ == '__main__':
         app_path = os.path.dirname(os.path.abspath(__file__))
         
     app = App()
+    p1 = threading.Thread(target=main)
+    p2 = threading.Thread(target=asyncPing)
     logging.info("Directorio de trabajo: " + app_path)
     logging.info("Archivo de configuración: " + inifile)
     configuration()
-    p1 = threading.Thread(target=main)
-    p2 = threading.Thread(target=asyncPing)
-    p1.start() #;p2.start()
+    p1.start(); p2.start()
     status("Inicializando...")
     app.mainloop()
     if p1.is_alive(): p1.join()
-    if p2.is_alive(): p2.join()
+    if p2.is_alive():
+        print("Ping is still alive")
+        p2.join()
