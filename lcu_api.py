@@ -1,4 +1,4 @@
-import os, time, urllib3, json
+import os, time, urllib3, json, logging
 from urllib.parse import urljoin
 from requests import Session
 

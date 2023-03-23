@@ -1,4 +1,4 @@
-import os, sys, time, threading, PIL, pystray, logging, webbrowser, configparser
+import os, sys, time, threading, PIL, pystray, logging, webbrowser, configparser, base64
 import json
 from localfunctions import *
 from lcu_api import *
@@ -22,18 +22,7 @@ status = lambda msg: app.status.config(text = msg)
 def closeApp():
     global exitScript
     exitScript=True
-    app.destroy()
-
-def toTray():
-   app.withdraw()
-   image=PIL.Image.open("lol-automation.ico")
-   menu=(pystray.MenuItem('Mostrar', unTray, default=True), pystray.MenuItem('Salir', closeApp))#, pystray.MenuItem('XD', lambda icon, item: icon.notify('Hello World!')))
-   icon=pystray.Icon(name="lol-automation", icon=image, title="LOL Automation", menu=menu)
-   icon.run_detached()
-
-def unTray(icon, item):
-   icon.stop()
-   app.deiconify()
+    app.exit()
 
 class TextHandler(logging.Handler):
     # This class allows you to log to a ScrolledText widget
@@ -66,16 +55,20 @@ class TextHandler(logging.Handler):
 
 class App(tk.Tk):
     def __init__(self):
+        ##
+        ## Initialize
+        ##
         super().__init__()
-
         ## Setting up Initial Things
         self.title("League of Legends Automation")
         self.geometry("600x200")
         self.resizable(True, True)
+        self.iconphoto(False, tk.PhotoImage(file= app_path + "\\assets\\icon.png"))
         #self.overrideredirect(True)
-        self.iconphoto(False, tk.PhotoImage(file="lol-automation.png"))
-        self.protocol("WM_DELETE_WINDOW", closeApp) ## Handle Close event from WM
         #self.attributes('-topmost', True)
+
+        ### Variables
+        self.icon_running = False
 
         self.columnconfigure(0, weight=2)
         self.rowconfigure(0, weight=1)
@@ -89,7 +82,7 @@ class App(tk.Tk):
         filemenu.add_command(label="Cargar configuración", command=configuration)
         filemenu.add_command(label="Guardar configuración", command=lambda: configuration(True))
         filemenu.add_separator()
-        filemenu.add_command(label="Minimizar a la bandeja", command=toTray)  
+        filemenu.add_command(label="Minimizar a la bandeja", command=self.toTray)  
         filemenu.add_separator()
         filemenu.add_command(label="Salir", command=closeApp)  
 
@@ -104,9 +97,9 @@ class App(tk.Tk):
         self.enableTray = tk.BooleanVar()
         self.minTray = tk.BooleanVar()
         self.closeTray = tk.BooleanVar()
-        functions_menu.add_checkbutton(label="Habilitar icono en la bandeja", onvalue=1, offvalue=0, variable=self.enableTray)
-        functions_menu.add_checkbutton(label="Minimizar la bandeja", onvalue=1, offvalue=0, variable=self.minTray)
-        functions_menu.add_checkbutton(label="Cerrar a la bandeja", onvalue=1, offvalue=0, variable=self.closeTray)
+        functions_menu.add_checkbutton(label="Habilitar icono en la bandeja", onvalue=1, offvalue=0, variable=self.enableTray, command=self.toggleTray)
+        functions_menu.add_checkbutton(label="Minimizar la bandeja", onvalue=1, offvalue=0, variable=self.minTray, command=self.tMinTray)
+        functions_menu.add_checkbutton(label="Cerrar a la bandeja", onvalue=1, offvalue=0, variable=self.closeTray, command=self.tCloseTray)
         
         ## help menu
         help_menu = Menu(menubar, tearoff=0)
@@ -127,7 +120,7 @@ class App(tk.Tk):
         text_handler = TextHandler(st)
 
         # Logging configuration
-        logging.basicConfig(filename='lol-automation.log',
+        logging.basicConfig(filename= "lol-automation.log",
             level=logging.INFO, 
             format='%(asctime)s - %(levelname)s - %(message)s')        
 
@@ -137,6 +130,46 @@ class App(tk.Tk):
 
         self.status = tk.Label(self, text="…", bd=1, relief=tk.SUNKEN, anchor=tk.W)
         self.status.grid(column=0, row=1, sticky='nsew')
+
+        # Create system tray icon
+        image=PIL.Image.open(app_path + "\\assets\\icon.ico")
+        menu=(pystray.MenuItem('Mostrar', self.unTray, default=True), pystray.MenuItem('Salir', closeApp))#, pystray.MenuItem('XD', lambda icon, item: icon.notify('Hello World!')))
+        self.icon=pystray.Icon(name="lol-automation", icon=image, title="LOL Automation", menu=menu)
+        self.icon.run_detached()
+
+    ### Functions
+
+    ## General
+    def exit(self):
+        if self.icon._running: self.icon.stop()
+        self.destroy()
+
+    ## Tray icon
+    def toggleTray(self):
+        if self.enableTray.get():
+            self.icon.visible = True
+        else:
+            self.icon.visible = False
+
+    def toTray(self, *args):
+        if not self.icon.visible: self.icon.visible = True
+        self.withdraw()
+
+    def unTray(self, icon, item):
+        if not self.enableTray.get(): self.icon.visible = False
+        self.deiconify()
+
+    def tMinTray(self):
+        if self.minTray.get():
+            self.bind("<Unmap>", self.toTray)
+        else:
+            self.unbind("<Unmap>")
+
+    def tCloseTray(self):
+        if self.closeTray.get():
+            self.protocol("WM_DELETE_WINDOW", self.toTray)
+        else:
+            self.protocol("WM_DELETE_WINDOW", closeApp)
 
 #####==============================================================#####
 ##### Configuration function. Using "inifile" as ini path variable #####
@@ -192,6 +225,7 @@ def configuration(write=False):
         app.enableTray.set(config.getboolean("tray", "enableTray", fallback=True))
         app.minTray.set(config.getboolean("tray", "minTray", fallback=True))
         app.closeTray.set(config.getboolean("tray", "closeTray", fallback=True))
+        app.toggleTray(); app.tMinTray(); app.tCloseTray()
         ## Timers
         Lapse1 = config.getfloat("timers", "Lapse1", fallback=1)
         Lapse2 = config.getfloat("timers", "Lapse2", fallback=0.5)
@@ -314,7 +348,16 @@ def asyncPing():
         time.sleep(pingLapse)
     
 if __name__ == '__main__':
+    if getattr(sys, 'frozen', False):
+        # If the application is run as a bundle, the PyInstaller bootloader
+        # extends the sys module by a flag frozen=True and sets the app 
+        # path into variable _MEIPASS'.
+        app_path = sys._MEIPASS
+    else:
+        app_path = os.path.dirname(os.path.abspath(__file__))
+        
     app = App()
+    logging.info("Directorio de trabajo: " + app_path)
     logging.info("Archivo de configuración: " + inifile)
     configuration()
     p1 = threading.Thread(target=main)
@@ -322,4 +365,5 @@ if __name__ == '__main__':
     p1.start() #;p2.start()
     status("Inicializando...")
     app.mainloop()
-    #p1.join() #;p2.join()
+    if p1.is_alive(): p1.join()
+    if p2.is_alive(): p2.join()
