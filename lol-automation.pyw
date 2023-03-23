@@ -272,7 +272,7 @@ def configuration(write=False):
         ## Ping
         pingLapse = config.getfloat("ping", "pingLapse", fallback=1)
         app.pingEnabled.set(config.getboolean("ping", "pingEnabled", fallback=False))
-        app.togglePing()
+        if app.pingEnabled.get(): app.togglePing()
         ## Successfully config read
         logging.info("Configuración cargada.")
 
