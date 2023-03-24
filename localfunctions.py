@@ -9,7 +9,7 @@ def checkProcess(processName):
             pass
     return False;
 
-async def updEntry(host, index):
+async def ping(host):
     try:
         pingResult = await aioping.ping(host, timeout=1)
     except OSError:

@@ -376,7 +376,7 @@ def pingThread():
             asyncio.set_event_loop(loop)
             tasks=[]
             for target in pingTargets:
-                tasks.append(asyncio.ensure_future(updEntry(pingTargets[target][1], target)))
+                tasks.append(asyncio.ensure_future(ping(pingTargets[target][1])))
             loop.run_until_complete(asyncio.gather(*tasks))
             try:
                 for target in pingTargets:
