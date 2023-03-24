@@ -1,4 +1,4 @@
-import os, sys, time, threading, PIL, pystray, logging, webbrowser, configparser
+import os, sys, time, threading, asyncio, PIL, pystray, logging, webbrowser, configparser
 from localfunctions import *
 from lcu_api import *
 from ping3 import ping as ping3
@@ -368,18 +368,35 @@ def main():
             
         time.sleep(Lapse)
 
-def asyncPing():
+def pingThread():
     while True:
         if exitScript: return
         if app.pingEnabled.get() and app.ping.winfo_exists():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            tasks=[]
+            for target in pingTargets:
+                tasks.append(asyncio.ensure_future(updEntry(pingTargets[target][1], target)))
+            loop.run_until_complete(asyncio.gather(*tasks))
             try:
                 for target in pingTargets:
-                    app.ping.entries[int(target)-1].config(text=ping(pingTargets[target][1]))
+                    result= tasks[int(target)-1].result()
+                    color = "red"
+                    if type(result) == int:
+                        if result <= 20:
+                            color = "blue"
+                        elif result <= 200:
+                            color = "green"
+                        elif result <= 500:
+                            pingColor = "yellow"
+                        result = str(result) + "ms"
+                    app.ping.entries[int(target)-1].config(text=result, fg=color)
             except Exception:
                 pass
         time.sleep(pingLapse)
     
 if __name__ == '__main__':
+    global app
     if getattr(sys, 'frozen', False):
         # If the application is run as a bundle, the PyInstaller bootloader
         # extends the sys module by a flag frozen=True and sets the app 
@@ -390,7 +407,7 @@ if __name__ == '__main__':
         
     app = App()
     p1 = threading.Thread(target=main)
-    p2 = threading.Thread(target=asyncPing)
+    p2 = threading.Thread(target=pingThread)  #(target=lambda: asyncio.run(pingThread()))
     logging.info("Directorio de trabajo: " + app_path)
     logging.info("Archivo de configuración: " + inifile)
     configuration()
