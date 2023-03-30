@@ -23,6 +23,24 @@ def closeApp():
     exitScript=True
     app.exit()
 
+class autoChatFrame(tk.LabelFrame):
+    def __init__(self, parent):
+        # Initialize Frame widget
+        super().__init__(parent, text="Automensajes: Carril")
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(7, weight=1)
+
+        # Role selection variable and widgets
+        self.role = tk.IntVar()
+        self.hiddenOnly = tk.BooleanVar()
+        tk.Radiobutton(self, text="Ninguno", variable=self.role, value=0).grid(column=0, row=0, sticky="w")
+        tk.Radiobutton(self, text="Superior", variable=self.role, value=1).grid(column=0, row=1, sticky="w")
+        tk.Radiobutton(self, text="Jungla", variable=self.role, value=2).grid(column=0, row=2, sticky="w")
+        tk.Radiobutton(self, text="Medio", variable=self.role, value=3).grid(column=0, row=3, sticky="w")
+        tk.Radiobutton(self, text="Inferior", variable=self.role, value=4).grid(column=0, row=4, sticky="w")
+        tk.Radiobutton(self, text="Soporte", variable=self.role, value=5).grid(column=0, row=5, sticky="w")
+        tk.Checkbutton(self, text="Solo en ocultas", variable=self.hiddenOnly).grid(column=0, row=6, sticky="w")
+
 class TextHandler(logging.Handler):
     # This class allows you to log to a ScrolledText widget
     def __init__(self, text):
@@ -81,10 +99,10 @@ class App(tk.Tk):
         super().__init__()
         ## Setting up Initial Things
         self.title("League of Legends Automation")
-        self.geometry("600x200")
+        self.geometry("600x236")
         self.resizable(True, True)
         self.iconphoto(False, tk.PhotoImage(file= app_path + "\\assets\\icon.png"))
-        self.columnconfigure(0, weight=2)
+        self.columnconfigure(0, weight=4)
         self.rowconfigure(0, weight=1)
 
         ### Variables
@@ -131,8 +149,7 @@ class App(tk.Tk):
         # Add text widget to display logging info
         st = ScrolledText.ScrolledText(self, state='disabled')
         st.configure(font='TkFixedFont')
-        st.pack(expand=True)
-        st.grid(column=0, row=0, sticky='nsew')
+        st.grid(column=0, columnspan=3, row=0, sticky='nsew')
 
         # Create textLogger
         text_handler = TextHandler(st)
@@ -146,8 +163,13 @@ class App(tk.Tk):
         logger = logging.getLogger()        
         logger.addHandler(text_handler)
 
+        self.autoChat = autoChatFrame(self)
+        self.autoChat.grid(column=3, columnspan=1, row=0, sticky='new')
+        
+        
+        ## Status bar
         self.status = tk.Label(self, text="…", bd=1, relief=tk.SUNKEN, anchor=tk.W)
-        self.status.grid(column=0, row=1, sticky='nsew')
+        self.status.grid(column=0, columnspan=4, row=1, sticky='nsew')
 
         # Create system tray icon
         image=PIL.Image.open(app_path + "\\assets\\icon.ico")
@@ -327,11 +349,10 @@ def main():
                     logging.info("Partida aceptada!"); app.notify("Partida aceptada!")
                     state=stat
             elif stat == "ChampSelect":
-                getChampSelect()
                 if state != stat:
                     status("Selección de campeón...")
                     state=stat
-                    sendChat("XD")
+                    autoChat(app.autoChat.role.get(), app.autoChat.hiddenOnly.get())
             elif stat == "InProgress" and state != stat:
                 status("Partida en progreso...")
                 state=stat
@@ -369,12 +390,14 @@ def main():
         time.sleep(Lapse)
 
 def pingThread():
+    #occurs=0
     while True:
         if exitScript: return
         if app.pingEnabled.get() and app.ping.winfo_exists():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             tasks=[]
+            #occurs+=1
             for target in pingTargets:
                 tasks.append(asyncio.ensure_future(ping(pingTargets[target][1])))
             loop.run_until_complete(asyncio.gather(*tasks))

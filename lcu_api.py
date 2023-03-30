@@ -8,6 +8,7 @@ __all__ = [
     "acceptMatch",
     "getChampSelect",
     "sendChat",
+    "autoChat",
     "ConnectionTimeoutError"
 ]
 
@@ -24,6 +25,7 @@ __lcu_api__ = None
 
 ## ChampSelect variables
 __chatID__ = None
+__hiddenMatch = False
 
 ##----------------------------- Classes -----------------------------##
 class LeagueConnection(Session):
@@ -86,8 +88,17 @@ def init_lcu(lockfile, timeout=30):
 
 ##---------------------------- Functions ----------------------------##
 def gameFlow():
+    global __chatID__ , __hiddenMatch__
     result = __lcu_api__.get("/lol-gameflow/v1/gameflow-phase")
     if result.status_code == 200:
+        ## Get Champion selection data if available
+        if result.text.replace('"', "") == "ChampSelect":
+            champSelect = json.loads(__lcu_api__.get("/lol-champ-select/v1/session").text)
+            if not champSelect["chatDetails"]["multiUserChatId"] == __chatID__:
+                __chatID__ = champSelect["chatDetails"]["multiUserChatId"]
+                logging.info("chatID: " + str(__chatID__))
+            __hiddenMatch__ = champSelect["hasSimultaneousPicks"]
+        ## Return GameFlow Phase
         return result.text.replace('"', "")
     
 def acceptMatch():
@@ -96,9 +107,8 @@ def acceptMatch():
         return True
 
 def getChampSelect():
-    global __chatID__
     champSelect = json.loads(__lcu_api__.get("/lol-champ-select/v1/session").text)
-    __chatID__ = champSelect["chatDetails"]["multiUserChatId"]
+    return champSelect
 
 def sendChat(msg):
     result = __lcu_api__.post("/lol-chat/v1/conversations/" + __chatID__ + "/messages", json={"body": msg})
@@ -106,3 +116,13 @@ def sendChat(msg):
         logging.error("Error " + str(result.status_code) + " enviando mensaje al chat: " + json.loads(result.text)["message"])
     else:
         return True
+
+def autoChat(role, hiddenOnly):
+        if hiddenOnly and not __hiddenMatch__: return
+        if role == 0: return
+        if role == 1: sendChat("TOP")# TOP
+        if role == 2: sendChat("JG")# JG
+        if role == 3: sendChat("MID")# MID
+        if role == 4: sendChat("ADC")# ADC
+        if role == 5: sendChat("SUPP")# SUPP
+                            

@@ -1,4 +1,4 @@
-import asyncio, psutil, aioping
+import logging, asyncio, psutil, aioping, socket
 
 def checkProcess(processName):
     for proc in psutil.process_iter():
@@ -12,14 +12,11 @@ def checkProcess(processName):
 async def ping(host):
     try:
         pingResult = await aioping.ping(host, timeout=1)
-    except OSError:
-        return "sys-err"
-    if type(pingResult) == float:
-        return int(pingResult * 1000)
-    elif type(pingResult) == bool and not pingResult:
-        return "unreach"
-    elif pingResult == None:
+    except TimeoutError:
         return "timeout"
-    else:
-        logging.error("Error de ping: " + str(type(pingResult)))
-        return "error"
+    except socket.gaierror:
+        return "unreach"
+    except Exception as err:
+        logging.error("Error de ping inesperado: " + str(type(err)) + " - " + str(err) + "\n")
+        return "unk-err"
+    return int(pingResult * 1000) # pingResult is a float of seconds. Multiply to 1000 to return ms.
